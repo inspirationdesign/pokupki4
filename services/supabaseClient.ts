@@ -9,13 +9,24 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.warn('Supabase credentials not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY');
 }
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-  realtime: {
-    params: {
-      eventsPerSecond: 10
-    }
+let supabaseClient;
+try {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    console.error('Supabase credentials missing!');
   }
-});
+  supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+    realtime: {
+      params: {
+        eventsPerSecond: 10
+      }
+    }
+  });
+  console.log('Supabase client initialized');
+} catch (err) {
+  console.error('Failed to initialize Supabase client:', err);
+}
+
+export const supabase = supabaseClient;
 
 // Types matching database schema
 export interface DbUser {
@@ -51,6 +62,8 @@ export async function authUser(telegramUser: {
   username?: string;
   photo_url?: string;
 }): Promise<{ user: DbUser; family: DbFamily & { members: DbUser[]; is_owner: boolean } } | null> {
+  if (!supabase) return null;
+
   // Check if user exists
   const { data: existingUser } = await supabase
     .from('users')
@@ -130,6 +143,7 @@ export async function authUser(telegramUser: {
 }
 
 export async function joinFamily(userId: number, inviteCode: string): Promise<{ family: DbFamily & { members: DbUser[]; is_owner: boolean } } | null> {
+  if (!supabase) return null;
   // Find family by invite code
   const { data: family } = await supabase
     .from('families')
@@ -164,6 +178,7 @@ export async function joinFamily(userId: number, inviteCode: string): Promise<{ 
 }
 
 export async function leaveFamily(userId: number): Promise<{ family: DbFamily & { members: DbUser[]; is_owner: boolean } } | null> {
+  if (!supabase) return null;
   // Get current user
   const { data: user } = await supabase
     .from('users')
@@ -205,6 +220,7 @@ export async function leaveFamily(userId: number): Promise<{ family: DbFamily & 
 }
 
 export async function removeFamilyMember(ownerId: number, targetUserId: number): Promise<{ family: DbFamily & { members: DbUser[]; is_owner: boolean } } | null> {
+  if (!supabase) return null;
   // Get owner's family
   const { data: owner } = await supabase
     .from('users')
@@ -248,6 +264,7 @@ export async function removeFamilyMember(ownerId: number, targetUserId: number):
 }
 
 export async function getItems(familyId: number): Promise<DbItem[]> {
+  if (!supabase) return [];
   const { data, error } = await supabase
     .from('items')
     .select('*')
@@ -269,6 +286,7 @@ export async function upsertItem(item: {
   family_id: number;
   purchase_count: number;
 }): Promise<boolean> {
+  if (!supabase) return false;
   const { error } = await supabase
     .from('items')
     .upsert(item, { onConflict: 'id' });
@@ -282,6 +300,7 @@ export async function upsertItem(item: {
 }
 
 export async function deleteItem(itemId: string): Promise<boolean> {
+  if (!supabase) return false;
   const { error } = await supabase
     .from('items')
     .delete()
@@ -302,6 +321,7 @@ export function subscribeToItems(
   onUpdate: (item: DbItem) => void,
   onDelete: (itemId: string) => void
 ) {
+  if (!supabase) return () => { };
   const channel = supabase
     .channel(`items:family_${familyId}`)
     .on(
